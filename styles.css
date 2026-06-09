@@ -146,11 +146,17 @@ body {
     0 0 24px rgba(182, 145, 255, 0.1);
 }
 
-.play-toggle {
+.controls {
   position: absolute;
   bottom: clamp(1.25rem, 3vw, 2rem);
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.control-button {
   display: inline-flex;
   align-items: center;
   gap: 0.9rem;
@@ -172,19 +178,24 @@ body {
     background 160ms ease;
 }
 
-.play-toggle:hover {
-  transform: translateX(-50%) translateY(-2px);
+.control-button:hover {
+  transform: translateY(-2px);
   border-color: rgba(184, 214, 255, 0.26);
   box-shadow:
     0 20px 46px rgba(3, 8, 19, 0.3),
     0 0 36px rgba(111, 171, 255, 0.11);
 }
 
-.play-toggle:active {
-  transform: translateX(-50%) translateY(0);
+.control-button:active {
+  transform: translateY(0);
 }
 
-.play-toggle::before {
+.control-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.control-button::before {
   content: "";
   width: 0.85rem;
   height: 0.85rem;
@@ -193,6 +204,10 @@ body {
   box-shadow:
     0 0 14px rgba(113, 228, 224, 0.45),
     0 0 22px rgba(255, 163, 142, 0.18);
+}
+
+.export-toggle::before {
+  background: linear-gradient(135deg, rgba(255, 163, 142, 0.95), rgba(161, 142, 255, 1) 58%, rgba(113, 228, 224, 1));
 }
 
 .play-label {
@@ -220,12 +235,18 @@ body {
   .nameplate h1 {
     font-size: clamp(1.55rem, 8.2vmin, 2.45rem);
     letter-spacing: 0.2em;
-    text-indent: 0.2em;
   }
 
-  .play-toggle {
+  .controls {
     bottom: 1.1rem;
-    gap: 0.65rem;
+    flex-direction: column;
+    width: min(88vw, 360px);
+    gap: 0.7rem;
+  }
+
+  .control-button {
+    justify-content: center;
+    width: 100%;
     padding: 0.9rem 1.05rem;
   }
 

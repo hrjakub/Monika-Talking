@@ -1,7 +1,9 @@
 const canvas = document.getElementById("visualizer");
 const audio = document.getElementById("audioTrack");
 const playToggle = document.getElementById("playToggle");
+const exportButton = document.getElementById("exportButton");
 const statusText = document.getElementById("statusText");
+const exportStatus = document.getElementById("exportStatus");
 const ctx = canvas.getContext("2d");
 
 let width = 0;
@@ -11,8 +13,10 @@ let dpi = Math.max(window.devicePixelRatio || 1, 1);
 let audioContext = null;
 let analyser = null;
 let sourceNode = null;
+let recordingDestination = null;
 let frequencyData = null;
 let timeData = null;
+let isExporting = false;
 
 let smoothedEnergy = 0.08;
 let smoothedBass = 0.05;
@@ -56,10 +60,12 @@ function ensureAudioGraph() {
   analyser = audioContext.createAnalyser();
   analyser.fftSize = 1024;
   analyser.smoothingTimeConstant = 0.9;
+  recordingDestination = audioContext.createMediaStreamDestination();
 
   sourceNode = audioContext.createMediaElementSource(audio);
   sourceNode.connect(analyser);
   analyser.connect(audioContext.destination);
+  analyser.connect(recordingDestination);
 
   frequencyData = new Uint8Array(analyser.frequencyBinCount);
   timeData = new Uint8Array(analyser.fftSize);
@@ -442,6 +448,10 @@ function render() {
 }
 
 async function togglePlayback() {
+  if (isExporting) {
+    return;
+  }
+
   try {
     ensureAudioGraph();
 
@@ -457,6 +467,156 @@ async function togglePlayback() {
   } catch (error) {
     statusText.textContent = "Playback blocked";
     console.error(error);
+  }
+}
+
+function getRecordingFormat() {
+  if (!window.MediaRecorder || typeof MediaRecorder.isTypeSupported !== "function") {
+    return null;
+  }
+
+  const candidates = [
+    { mimeType: "video/mp4;codecs=avc1.42E01E,mp4a.40.2", extension: "mp4", label: "MP4" },
+    { mimeType: "video/mp4", extension: "mp4", label: "MP4" },
+    { mimeType: "video/webm;codecs=vp9,opus", extension: "webm", label: "WebM" },
+    { mimeType: "video/webm;codecs=vp8,opus", extension: "webm", label: "WebM" },
+    { mimeType: "video/webm", extension: "webm", label: "WebM" },
+  ];
+
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate.mimeType)) || null;
+}
+
+function canCaptureCanvas() {
+  return typeof canvas.captureStream === "function";
+}
+
+function updateExportUi() {
+  if (isExporting) {
+    return;
+  }
+
+  const recordingFormat = canCaptureCanvas() ? getRecordingFormat() : null;
+  exportButton.disabled = !recordingFormat;
+
+  if (!recordingFormat) {
+    exportStatus.textContent = "Open in Safari/Chrome";
+  } else if (recordingFormat.extension === "mp4") {
+    exportStatus.textContent = "MP4 ready";
+  } else {
+    exportStatus.textContent = "WebM in this browser";
+  }
+}
+
+function downloadBlob(blob, fileName) {
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(downloadUrl);
+  }, 2000);
+}
+
+function setButtonsDisabled(disabled) {
+  playToggle.disabled = disabled;
+  exportButton.disabled = disabled || !canCaptureCanvas() || !getRecordingFormat();
+}
+
+async function exportVideo() {
+  if (isExporting) {
+    return;
+  }
+
+  if (!window.MediaRecorder || typeof canvas.captureStream !== "function") {
+    exportStatus.textContent = "Open in Safari/Chrome";
+    return;
+  }
+
+  try {
+    ensureAudioGraph();
+
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
+    const recordingFormat = getRecordingFormat();
+
+    if (!recordingFormat) {
+      exportStatus.textContent = "No supported export codec";
+      return;
+    }
+
+    if (!audio.paused) {
+      audio.pause();
+    }
+
+    audio.currentTime = 0;
+    isExporting = true;
+    setButtonsDisabled(true);
+    exportStatus.textContent = recordingFormat.extension === "mp4" ? "Exporting MP4..." : "Exporting WebM...";
+    syncUi();
+
+    const canvasStream = canvas.captureStream(60);
+    const combinedStream = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...recordingDestination.stream.getAudioTracks(),
+    ]);
+
+    const chunks = [];
+    const recorder = new MediaRecorder(combinedStream, { mimeType: recordingFormat.mimeType });
+
+    const recorderStopped = new Promise((resolve, reject) => {
+      recorder.addEventListener("stop", resolve, { once: true });
+      recorder.addEventListener(
+        "error",
+        (event) => {
+          reject(event.error || new Error("Video export failed"));
+        },
+        { once: true }
+      );
+    });
+
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data && event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    });
+
+    const audioEnded = new Promise((resolve) => {
+      audio.addEventListener("ended", resolve, { once: true });
+    });
+
+    recorder.start(250);
+    await audio.play();
+    await audioEnded;
+
+    if (recorder.state !== "inactive") {
+      recorder.stop();
+    }
+
+    await recorderStopped;
+
+    canvasStream.getTracks().forEach((track) => track.stop());
+    combinedStream.getTracks().forEach((track) => track.stop());
+
+    const resolvedMimeType = recorder.mimeType || recordingFormat.mimeType;
+    const extension = resolvedMimeType.includes("mp4") ? "mp4" : recordingFormat.extension;
+    const blob = new Blob(chunks, { type: resolvedMimeType });
+    downloadBlob(blob, `monika-visualizer.${extension}`);
+
+    exportStatus.textContent = extension === "mp4" ? "MP4 downloaded" : "WebM downloaded";
+  } catch (error) {
+    exportStatus.textContent = "Export failed";
+    console.error(error);
+  } finally {
+    isExporting = false;
+    setButtonsDisabled(false);
+    syncUi();
+    updateExportUi();
   }
 }
 
@@ -478,10 +638,12 @@ function syncUi() {
 
 window.addEventListener("resize", resizeCanvas);
 playToggle.addEventListener("click", togglePlayback);
+exportButton.addEventListener("click", exportVideo);
 audio.addEventListener("play", syncUi);
 audio.addEventListener("pause", syncUi);
 audio.addEventListener("ended", syncUi);
 
 resizeCanvas();
 syncUi();
+updateExportUi();
 render();

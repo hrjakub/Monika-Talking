@@ -18,10 +18,17 @@
         </div>
       </section>
 
-      <button id="playToggle" class="play-toggle" type="button" aria-pressed="false">
-        <span class="play-label">Play Voice</span>
-        <span id="statusText" class="status-text">Ready</span>
-      </button>
+      <div class="controls">
+        <button id="playToggle" class="control-button play-toggle" type="button" aria-pressed="false">
+          <span class="play-label">Play Voice</span>
+          <span id="statusText" class="status-text">Ready</span>
+        </button>
+
+        <button id="exportButton" class="control-button export-toggle" type="button">
+          <span class="play-label">Export Video</span>
+          <span id="exportStatus" class="status-text">MP4 if supported</span>
+        </button>
+      </div>
 
       <audio id="audioTrack" preload="auto" src="./monika.mp3"></audio>
     </main>
