@@ -18,6 +18,7 @@ let recordingDestination = null;
 let frequencyData = null;
 let timeData = null;
 let isExporting = false;
+let isLeadInActive = false;
 
 let smoothedEnergy = 0.08;
 let smoothedBass = 0.05;
@@ -26,6 +27,7 @@ let smoothedAir = 0.06;
 let isReady = false;
 
 const TAU = Math.PI * 2;
+const LEAD_IN_MS = 2000;
 
 function resizeCanvas() {
   width = window.innerWidth;
@@ -50,6 +52,12 @@ function ease(current, target, strength) {
 
 function wrap01(value) {
   return ((value % 1) + 1) % 1;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function ensureAudioGraph() {
@@ -517,7 +525,7 @@ function render() {
 }
 
 async function togglePlayback() {
-  if (isExporting) {
+  if (isExporting || isLeadInActive) {
     return;
   }
 
@@ -529,7 +537,15 @@ async function togglePlayback() {
     }
 
     if (audio.paused) {
-      await audio.play();
+      if (audio.ended) {
+        audio.currentTime = 0;
+      }
+
+      if (audio.currentTime === 0) {
+        await startAudioWithLeadIn();
+      } else {
+        await audio.play();
+      }
     } else {
       audio.pause();
     }
@@ -559,13 +575,19 @@ function canCaptureCanvas() {
   return typeof canvas.captureStream === "function";
 }
 
+function refreshButtonStates() {
+  const recordingFormat = canCaptureCanvas() ? getRecordingFormat() : null;
+  playToggle.disabled = isLeadInActive || isExporting;
+  exportButton.disabled = isLeadInActive || isExporting || !recordingFormat;
+}
+
 function updateExportUi() {
   if (isExporting) {
     return;
   }
 
   const recordingFormat = canCaptureCanvas() ? getRecordingFormat() : null;
-  exportButton.disabled = !recordingFormat;
+  refreshButtonStates();
 
   if (!recordingFormat) {
     exportStatus.textContent = "Open in Safari/Chrome";
@@ -590,17 +612,27 @@ function downloadBlob(blob, fileName) {
   }, 2000);
 }
 
-function setButtonsDisabled(disabled) {
-  playToggle.disabled = disabled;
-  exportButton.disabled = disabled || !canCaptureCanvas() || !getRecordingFormat();
-}
-
 function setExportVisualState(active) {
   appShell.classList.toggle("is-exporting", active);
 }
 
+async function startAudioWithLeadIn() {
+  isLeadInActive = true;
+  refreshButtonStates();
+  syncUi();
+
+  try {
+    await wait(LEAD_IN_MS);
+    await audio.play();
+  } finally {
+    isLeadInActive = false;
+    refreshButtonStates();
+    syncUi();
+  }
+}
+
 async function exportVideo() {
-  if (isExporting) {
+  if (isExporting || isLeadInActive) {
     return;
   }
 
@@ -630,7 +662,7 @@ async function exportVideo() {
     audio.currentTime = 0;
     isExporting = true;
     setExportVisualState(true);
-    setButtonsDisabled(true);
+    refreshButtonStates();
     exportStatus.textContent = recordingFormat.extension === "mp4" ? "Exporting MP4..." : "Exporting WebM...";
     syncUi();
 
@@ -665,7 +697,7 @@ async function exportVideo() {
     });
 
     recorder.start(250);
-    await audio.play();
+    await startAudioWithLeadIn();
     await audioEnded;
 
     if (recorder.state !== "inactive") {
@@ -689,7 +721,7 @@ async function exportVideo() {
   } finally {
     isExporting = false;
     setExportVisualState(false);
-    setButtonsDisabled(false);
+    refreshButtonStates();
     syncUi();
     updateExportUi();
   }
@@ -698,10 +730,12 @@ async function exportVideo() {
 function syncUi() {
   const playing = !audio.paused;
   playToggle.setAttribute("aria-pressed", String(playing));
-  playToggle.querySelector(".play-label").textContent = playing ? "Pause Voice" : "Play Voice";
+  playToggle.querySelector(".play-label").textContent = isLeadInActive ? "Starting..." : playing ? "Pause Voice" : "Play Voice";
 
   if (audio.ended) {
     statusText.textContent = "Finished";
+  } else if (isLeadInActive) {
+    statusText.textContent = "Starting in 2s";
   } else if (playing) {
     statusText.textContent = "Playing";
   } else if (audio.currentTime > 0) {
@@ -721,4 +755,5 @@ audio.addEventListener("ended", syncUi);
 resizeCanvas();
 syncUi();
 updateExportUi();
+refreshButtonStates();
 render();
