@@ -77,6 +77,11 @@ body {
   display: grid;
   place-items: center;
   pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.app-shell.is-exporting .centerpiece {
+  opacity: 0;
 }
 
 .center-glow {

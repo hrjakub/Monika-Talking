@@ -4,6 +4,7 @@ const playToggle = document.getElementById("playToggle");
 const exportButton = document.getElementById("exportButton");
 const statusText = document.getElementById("statusText");
 const exportStatus = document.getElementById("exportStatus");
+const appShell = document.querySelector(".app-shell");
 const ctx = canvas.getContext("2d");
 
 let width = 0;
@@ -368,9 +369,73 @@ function drawAccentArc(centerX, centerY, radius, pulse, time) {
   ctx.restore();
 }
 
+function drawTrackedText(text, centerX, centerY, tracking) {
+  const characters = [...text];
+  const widths = characters.map((character) => ctx.measureText(character).width);
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0) + tracking * Math.max(characters.length - 1, 0);
+  let currentX = centerX - totalWidth / 2;
+
+  for (let i = 0; i < characters.length; i += 1) {
+    ctx.fillText(characters[i], currentX, centerY);
+    currentX += widths[i] + tracking;
+  }
+}
+
+function drawExportLabel(centerX, centerY, radius, pulse) {
+  const plateRadius = radius * 0.71;
+  const plateGradient = ctx.createRadialGradient(
+    centerX,
+    centerY - plateRadius * 0.2,
+    plateRadius * 0.08,
+    centerX,
+    centerY,
+    plateRadius
+  );
+  plateGradient.addColorStop(0, `rgba(82, 111, 190, ${0.36 + pulse * 0.08})`);
+  plateGradient.addColorStop(0.64, `rgba(20, 34, 68, ${0.22 + pulse * 0.04})`);
+  plateGradient.addColorStop(1, "rgba(10, 18, 35, 0)");
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+
+  ctx.beginPath();
+  ctx.fillStyle = plateGradient;
+  ctx.arc(centerX, centerY, plateRadius, 0, TAU);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.strokeStyle = `rgba(167, 196, 255, ${0.12 + pulse * 0.03})`;
+  ctx.lineWidth = 1;
+  ctx.arc(centerX, centerY, plateRadius * 0.88, 0, TAU);
+  ctx.stroke();
+
+  const titleSize = radius * 0.245;
+  const subtitleSize = Math.max(radius * 0.052, 14);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+
+  ctx.save();
+  ctx.fillStyle = "rgba(245, 247, 252, 0.98)";
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = "rgba(130, 190, 255, 0.16)";
+  ctx.font = `500 ${titleSize}px "Avenir Next", Avenir, Futura, "Century Gothic", sans-serif`;
+  drawTrackedText("MONIKA", centerX, centerY - radius * 0.055, titleSize * 0.19);
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = "rgba(216, 226, 245, 0.82)";
+  ctx.font = `500 ${subtitleSize}px "Avenir Next", Avenir, Futura, "Century Gothic", sans-serif`;
+  drawTrackedText("HERE FOR YOU", centerX, centerY + radius * 0.12, subtitleSize * 0.24);
+  ctx.restore();
+
+  ctx.restore();
+}
+
 function render() {
   const time = performance.now() * 0.001;
   updateAudioState();
+  const showExportLabel = isExporting || appShell.classList.contains("is-exporting");
 
   const idleMotion = 0.06 + Math.sin(time * 0.85) * 0.018;
   const pulse = clamp(smoothedVoice * 0.52 + smoothedBass * 0.18 + smoothedAir * 0.12 + idleMotion, 0.05, 0.82);
@@ -443,6 +508,10 @@ function render() {
 
   ctx.restore();
   drawAccentArc(centerX, centerY, radius, pulse, time);
+
+  if (showExportLabel) {
+    drawExportLabel(centerX, centerY, radius, pulse);
+  }
 
   window.requestAnimationFrame(render);
 }
@@ -526,6 +595,10 @@ function setButtonsDisabled(disabled) {
   exportButton.disabled = disabled || !canCaptureCanvas() || !getRecordingFormat();
 }
 
+function setExportVisualState(active) {
+  appShell.classList.toggle("is-exporting", active);
+}
+
 async function exportVideo() {
   if (isExporting) {
     return;
@@ -556,6 +629,7 @@ async function exportVideo() {
 
     audio.currentTime = 0;
     isExporting = true;
+    setExportVisualState(true);
     setButtonsDisabled(true);
     exportStatus.textContent = recordingFormat.extension === "mp4" ? "Exporting MP4..." : "Exporting WebM...";
     syncUi();
@@ -614,6 +688,7 @@ async function exportVideo() {
     console.error(error);
   } finally {
     isExporting = false;
+    setExportVisualState(false);
     setButtonsDisabled(false);
     syncUi();
     updateExportUi();
