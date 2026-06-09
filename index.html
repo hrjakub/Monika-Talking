@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monika Visualizer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <canvas id="visualizer" aria-hidden="true"></canvas>
+
+      <section class="centerpiece" aria-label="Monika audio visualizer">
+        <div class="center-glow"></div>
+        <div class="nameplate">
+          <p class="eyebrow">Here With You</p>
+          <h1>MONIKA</h1>
+        </div>
+      </section>
+
+      <button id="playToggle" class="play-toggle" type="button" aria-pressed="false">
+        <span class="play-label">Play Voice</span>
+        <span id="statusText" class="status-text">Ready</span>
+      </button>
+
+      <audio id="audioTrack" preload="auto" src="./monika.mp3"></audio>
+    </main>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
